@@ -43,3 +43,4 @@ saleSchema.pre('save', function(next) {
 
 module.exports = mongoose.model('Sale', saleSchema);
 
+

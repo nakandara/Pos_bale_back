@@ -10,3 +10,4 @@ router.get('/:categoryId', getCategoryInventory);
 
 module.exports = router;
 
+
