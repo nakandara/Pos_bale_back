@@ -141,12 +141,182 @@ const deleteSale = async (req, res) => {
   }
 };
 
+// @desc    Get weekly sales analytics
+// @route   GET /api/sales/analytics/weekly
+// @access  Public
+const getWeeklySales = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    // Default to last 8 weeks if no dates provided
+    const end = endDate ? new Date(endDate) : new Date();
+    const start = startDate ? new Date(startDate) : new Date(end.getTime() - (8 * 7 * 24 * 60 * 60 * 1000));
+    
+    // Get all sales within the date range
+    const sales = await Sale.find({
+      date: {
+        $gte: start,
+        $lte: end
+      }
+    }).sort({ date: 1 });
+
+    // Group sales by week
+    const weeklyData = {};
+    
+    sales.forEach(sale => {
+      const saleDate = new Date(sale.date);
+      
+      // Get the Monday of the week for this sale
+      const dayOfWeek = saleDate.getDay();
+      const diff = saleDate.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+      const monday = new Date(saleDate.setDate(diff));
+      monday.setHours(0, 0, 0, 0);
+      
+      // Format week key as "YYYY-MM-DD" (Monday's date)
+      const weekKey = monday.toISOString().split('T')[0];
+      
+      if (!weeklyData[weekKey]) {
+        weeklyData[weekKey] = {
+          weekStart: weekKey,
+          totalSales: 0,
+          totalRevenue: 0,
+          totalQuantity: 0,
+          transactionCount: 0
+        };
+      }
+      
+      weeklyData[weekKey].totalRevenue += sale.totalAmount || 0;
+      weeklyData[weekKey].totalQuantity += sale.quantity || 0;
+      weeklyData[weekKey].transactionCount += 1;
+      weeklyData[weekKey].totalSales = weeklyData[weekKey].totalRevenue;
+    });
+    
+    // Convert to array and sort by date
+    const weeklyArray = Object.values(weeklyData).sort((a, b) => 
+      new Date(a.weekStart) - new Date(b.weekStart)
+    );
+    
+    // Format the response with readable week labels
+    const formattedData = weeklyArray.map(week => {
+      const weekDate = new Date(week.weekStart);
+      const endOfWeek = new Date(weekDate);
+      endOfWeek.setDate(endOfWeek.getDate() + 6);
+      
+      return {
+        ...week,
+        weekLabel: `${weekDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endOfWeek.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+        averagePerTransaction: week.transactionCount > 0 ? (week.totalRevenue / week.transactionCount).toFixed(2) : 0
+      };
+    });
+    
+    res.json({
+      success: true,
+      data: formattedData,
+      summary: {
+        totalWeeks: formattedData.length,
+        totalRevenue: formattedData.reduce((sum, w) => sum + w.totalRevenue, 0),
+        totalTransactions: formattedData.reduce((sum, w) => sum + w.transactionCount, 0),
+        averageWeeklyRevenue: formattedData.length > 0 
+          ? (formattedData.reduce((sum, w) => sum + w.totalRevenue, 0) / formattedData.length).toFixed(2)
+          : 0
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server Error', error: error.message });
+  }
+};
+
+// @desc    Get day-of-week sales analytics
+// @route   GET /api/sales/analytics/day-of-week
+// @access  Public
+const getDayOfWeekSales = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    // Default to last 2 weeks if no dates provided
+    const end = endDate ? new Date(endDate) : new Date();
+    const start = startDate ? new Date(startDate) : new Date(end.getTime() - (2 * 7 * 24 * 60 * 60 * 1000));
+    
+    // Get all sales within the date range
+    const sales = await Sale.find({
+      date: {
+        $gte: start,
+        $lte: end
+      }
+    }).sort({ date: 1 });
+
+    // Initialize day-of-week data
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayData = {};
+    
+    dayNames.forEach(day => {
+      dayData[day] = {
+        dayName: day,
+        totalRevenue: 0,
+        totalQuantity: 0,
+        transactionCount: 0,
+        averagePerTransaction: 0
+      };
+    });
+    
+    // Group sales by day of week
+    sales.forEach(sale => {
+      const saleDate = new Date(sale.date);
+      const dayOfWeek = saleDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      const dayName = dayNames[dayOfWeek];
+      
+      dayData[dayName].totalRevenue += sale.totalAmount || 0;
+      dayData[dayName].totalQuantity += sale.quantity || 0;
+      dayData[dayName].transactionCount += 1;
+    });
+    
+    // Calculate averages and convert to array
+    const dayArray = dayNames.map(day => {
+      const data = dayData[day];
+      data.averagePerTransaction = data.transactionCount > 0 
+        ? (data.totalRevenue / data.transactionCount).toFixed(2)
+        : 0;
+      return data;
+    });
+    
+    // Find best and worst performing days
+    const sortedByRevenue = [...dayArray].sort((a, b) => b.totalRevenue - a.totalRevenue);
+    const bestDay = sortedByRevenue[0];
+    const worstDay = sortedByRevenue.find(d => d.totalRevenue > 0) || sortedByRevenue[sortedByRevenue.length - 1];
+    
+    res.json({
+      success: true,
+      data: dayArray,
+      summary: {
+        dateRange: {
+          start: start.toISOString().split('T')[0],
+          end: end.toISOString().split('T')[0]
+        },
+        totalRevenue: dayArray.reduce((sum, d) => sum + d.totalRevenue, 0),
+        totalTransactions: dayArray.reduce((sum, d) => sum + d.transactionCount, 0),
+        bestDay: {
+          name: bestDay.dayName,
+          revenue: bestDay.totalRevenue
+        },
+        worstDay: {
+          name: worstDay.dayName,
+          revenue: worstDay.totalRevenue
+        }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server Error', error: error.message });
+  }
+};
+
 module.exports = {
   getSales,
   getSaleById,
   createSale,
   updateSale,
-  deleteSale
+  deleteSale,
+  getWeeklySales,
+  getDayOfWeekSales
 };
 
 

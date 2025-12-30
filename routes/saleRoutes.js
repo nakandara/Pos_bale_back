@@ -5,8 +5,14 @@ const {
   getSaleById,
   createSale,
   updateSale,
-  deleteSale
+  deleteSale,
+  getWeeklySales,
+  getDayOfWeekSales
 } = require('../controllers/saleController');
+
+// Analytics routes (must come before /:id route)
+router.get('/analytics/weekly', getWeeklySales);
+router.get('/analytics/day-of-week', getDayOfWeekSales);
 
 router.route('/')
   .get(getSales)
