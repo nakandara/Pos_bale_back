@@ -46,6 +46,7 @@ app.use('/api/purchases', require('./routes/purchaseRoutes'));
 app.use('/api/sales', require('./routes/saleRoutes'));
 app.use('/api/inventory', require('./routes/inventoryRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
+app.use('/api/shop-closures', require('./routes/shopClosureRoutes'));
 
 // Root route
 app.get('/', (req, res) => {
@@ -57,7 +58,8 @@ app.get('/', (req, res) => {
       purchases: '/api/purchases',
       sales: '/api/sales',
       inventory: '/api/inventory',
-      dashboard: '/api/dashboard'
+      dashboard: '/api/dashboard',
+      shopClosures: '/api/shop-closures'
     }
   });
 });
